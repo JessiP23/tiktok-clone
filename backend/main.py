@@ -28,3 +28,38 @@ nmf = NMF(n_components=10, random_state=42)
 # Fit the model to the scaled interaction matrix
 nmf.fit(X_train_scaled)
 
+# train a cbg model using item attributes
+# import the featuremasher model from scikit-learn
+from sklearn.feature_extraction.text import FeatureHasher
+
+# FeatureHasher with 100 features
+hasher = FeatureHasher(n_features=100)
+
+# fir the featurehasher model to the item attributes
+item_attributes = hasher.fit_transform(interactions['item_attributes'])
+
+# combine CF and CBF models to produce hybrid recommendations
+
+# create a custom hybrid model that combines CF and CBF
+class HybridModel:
+    def _init_(self, cf_model, cbf_model):
+        self.cf_model = cf_model
+        self.cbf_model = cbf_model
+
+    def predict(self, user_id):
+        # use the CF model to get user recommendations
+        cf_recommendations = self.cf_model.predict(user_id)
+
+        # use the CBF model to get item recommendations
+        cbf_recommendations = self.cbf_model.predict(user_id)
+
+        # combine the CF and CBF recommendations
+        hybrid_recommendations = [item for item in cf_recommendations if item in cbf_recommendations]
+
+        return hybrid_recommendations
+
+# create an instance of the hybrid model
+hybrid_model = HybridModel(nmf, hasher)
+
+# user the hybrid model to make predictions
+hybrid_predictions = hybrid_model.predict(user_id)
