@@ -40,6 +40,24 @@ item_attributes = hasher.fit_transform(interactions['item_attributes'])
 
 # combine CF and CBF models to produce hybrid recommendations
 
+
+# TensorFlow
+import tensorflow as tf
+
+
+# tensorflow model with custom loss function
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Dense(10, input_shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(10, activation='relu'),
+    tf.keras.layers.Dense(1, activation='sigmoid')
+])
+
+# compile the model with a custom loss function
+model.compile(loss='mean_squared_error', optimizer='adam')
+
+# Fit the model to the interaction matrix
+model.fit(X_train_scaled, y_train, epochs=10, batch_size=32)
+
 # create a custom hybrid model that combines CF and CBF
 class HybridModel:
     def _init_(self, cf_model, cbf_model):
