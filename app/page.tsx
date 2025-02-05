@@ -104,8 +104,10 @@ export default function Home() {
     const video = videos[videoIndex];
     console.log(`Video ${video.video_id} received ${type}`);
 
+    // mark video as played
     setPlayedVideoIds((prev) => new Set(prev).add(video.video_id));
 
+    // keep like or dislike based on user behavior
     if (type === "like") {
       setLikedVideoIds((prev) => new Set(prev).add(video.video_id));
     } else {
