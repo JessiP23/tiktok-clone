@@ -107,6 +107,8 @@ export default function Home() {
     }));
   };
 
+
+  // scroll video function
   const scrollToVideo = (direction: ScrollDirection): void => {
     const container = document.querySelector(".video-container") as HTMLElement;
     const videoHeight: number = container.clientHeight;
