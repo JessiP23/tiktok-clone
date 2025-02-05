@@ -35,6 +35,7 @@ export default function Home() {
 
   // Fetch recommendations from the backend
   async function fetchRecommendations(): Promise<void> {
+    // query parameters from the sets
     const playedParam: string = Array.from(playedVideoIds).join(",");
     const likedParam: string = Array.from(likedVideoIds).join(",");
     const dislikedParam: string = Array.from(dislikedVideoIds).join(",");
