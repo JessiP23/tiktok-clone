@@ -67,6 +67,7 @@ export default function Home() {
     }
   }
 
+  // fetch recommendation on page load
   useEffect(() => {
     fetchRecommendations();
   }, []);
