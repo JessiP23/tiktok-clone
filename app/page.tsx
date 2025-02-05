@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from "react";
 import Image from "next/image";
 
@@ -13,10 +15,14 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchRecommendations() {
-      // Adjust URL if needed (e.g., your Flask backend host and port)
       const res = await fetch("http://localhost:5000/recommendations");
-      const data = await res.json();
-      setVideos(data);
+      const data: Video[] = await res.json();
+
+      const uniqueVideos = Array.from(
+        new Map(data.map((video) => [video.video_id, video])).values()
+      )
+
+      setVideos(uniqueVideos);
       setLoading(false);
     }
     fetchRecommendations();
@@ -29,9 +35,8 @@ export default function Home() {
         <p>Loading recommendations...</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
-          {videos.map((video) => (
-            <div key={video.video_id} className="border rounded p-4">
-              {/* Use YouTube thumbnail URL */}
+          {videos.map((video, index) => (
+            <div key={`${video.video_id}-${index}`} className="border rounded p-4">
               <Image
                 src={`https://img.youtube.com/vi/${video.video_id}/hqdefault.jpg`}
                 alt={video.title}

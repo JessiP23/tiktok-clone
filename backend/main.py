@@ -4,11 +4,13 @@ from flask import Flask, request, jsonify
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 # Load the YouTube Trending dataset
-interactions = pd.read_csv('/kaggle/working/data/youtube-new/USvideos.csv')
+interactions = pd.read_csv('../USvideos.csv')
 
 # Select relevant columns
 videos = interactions[['video_id', 'title', 'views', 'category_id']].copy()
