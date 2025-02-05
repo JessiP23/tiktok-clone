@@ -1,83 +1,69 @@
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import precision_score, recall_score
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# load the interaction matrix and split it into training and testing sets
-interactions = pd.read_csv('data/interactions.csv')
-user_id, item_id, rating = interactions['user_id'], interactions['item_id'], interactions['rating']
+# Load the YouTube Trending dataset
+interactions = pd.read_csv('/kaggle/working/data/youtube-new/USvideos.csv')
 
-# split the interaction matrix into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(user_id, item_id, rating, test_size=0.2, random_state=42)
+# Select relevant columns
+videos = interactions[['video_id', 'title', 'views', 'category_id']].copy()
 
+# ---------------------------
+# CF Component (Popularity Proxy)
+# ---------------------------
+# Use "views" as a proxy for rating.
+# Normalize the views so that higher view counts give a higher CF score.
+scaler = MinMaxScaler()
+videos['views_norm'] = scaler.fit_transform(videos[['views']])
 
-# Normalize the interaction matrix using StandardScaler
-scaler = StandardScaler()
+# ---------------------------
+# CBF Component (Content similarity)
+# ---------------------------
+# Use TF-IDF on the video titles
+vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_matrix = vectorizer.fit_transform(videos['title'])
 
-# Fit and transfer the interaction matrix
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+# ---------------------------
+# Hybrid Recommendation Function
+# ---------------------------
+def recommend_videos(query, alpha=0.5, top_n=10):
+    """
+    Recommend videos based on a query string.
 
-# train a cf model using matrix factorization
-from sklearn.decomposition import NMF
+    Parameters:
+      query (str): Query text (can be a video title or keyword).
+      alpha (float): Weight for the CF score (normalized views). The content-based 
+                     similarity receives weight (1 - alpha).
+      top_n (int): Number of top recommendations to return.
+    
+    Returns:
+      DataFrame containing video_id, title, and final hybrid score.
+    """
+    # Compute TF-IDF vector for the query
+    query_vec = vectorizer.transform([query])
+    # Compute cosine similarity between query and all video titles
+    sim_scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
+    # Normalize the similarity scores to [0, 1]
+    sim_norm = (sim_scores - sim_scores.min()) / (sim_scores.max() - sim_scores.min() + 1e-8)
+    
+    # Get the CF score from normalized views
+    cf_scores = videos['views_norm'].values
+    # Compute the final hybrid score as a weighted combination
+    final_scores = alpha * cf_scores + (1 - alpha) * sim_norm
+    
+    # Attach scores to the dataframe and sort by the final score descending
+    videos['final_score'] = final_scores
+    recommended = videos.sort_values(by='final_score', ascending=False).head(top_n)
+    return recommended[['video_id', 'title', 'final_score']]
 
-# create a NMF instance with 10 latent factors
-nmf = NMF(n_components=10, random_state=42)
+# ---------------------------
+# Example Usage
+# ---------------------------
+# For demonstration, use the title of the first video in the dataset as the query.
+sample_query = videos['title'].iloc[0]
+recommendations = recommend_videos(sample_query, alpha=0.5, top_n=10)
 
-# Fit the model to the scaled interaction matrix
-nmf.fit(X_train_scaled)
-
-# train a cbg model using item attributes
-# import the featuremasher model from scikit-learn
-from sklearn.feature_extraction.text import FeatureHasher
-
-# FeatureHasher with 100 features
-hasher = FeatureHasher(n_features=100)
-
-# fir the featurehasher model to the item attributes
-item_attributes = hasher.fit_transform(interactions['item_attributes'])
-
-# combine CF and CBF models to produce hybrid recommendations
-
-
-# TensorFlow
-import tensorflow as tf
-
-
-# tensorflow model with custom loss function
-model = tf.keras.models.Sequential([
-    tf.keras.layers.Dense(10, input_shape=(X_train.shape[1],)),
-    tf.keras.layers.Dense(10, activation='relu'),
-    tf.keras.layers.Dense(1, activation='sigmoid')
-])
-
-# compile the model with a custom loss function
-model.compile(loss='mean_squared_error', optimizer='adam')
-
-# Fit the model to the interaction matrix
-model.fit(X_train_scaled, y_train, epochs=10, batch_size=32)
-
-# create a custom hybrid model that combines CF and CBF
-class HybridModel:
-    def __init__(self, cf_model, cbf_model):
-        self.cf_model = cf_model
-        self.cbf_model = cbf_model
-
-    def predict(self, user_id):
-        # use the CF model to get user recommendations
-        cf_recommendations = self.cf_model.predict(user_id)
-
-        # use the CBF model to get item recommendations
-        cbf_recommendations = self.cbf_model.predict(user_id)
-
-        # combine the CF and CBF recommendations
-        hybrid_recommendations = [item for item in cf_recommendations if item in cbf_recommendations]
-
-        return hybrid_recommendations
-
-# create an instance of the hybrid model
-hybrid_model = HybridModel(nmf, hasher)
-
-# user the hybrid model to make predictions
-hybrid_predictions = hybrid_model.predict(user_id)
+print("Recommendations:")
+print(recommendations)
