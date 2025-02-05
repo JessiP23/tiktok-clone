@@ -72,6 +72,8 @@ export default function Home() {
     fetchRecommendations();
   }, []);
 
+
+  // update the video index when the user scrolls within the container
   const handleScroll = (e: React.UIEvent<HTMLDivElement>): void => {
     const container = e.currentTarget;
     const scrollPosition = container.scrollTop;
