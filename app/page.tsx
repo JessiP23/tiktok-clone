@@ -131,8 +131,11 @@ export default function Home() {
 
   // scroll to the next video based on the direction
   const scrollToVideo = (direction: ScrollDirection): void => {
+    // get the container and video height
     const container = document.querySelector(".video-container") as HTMLElement;
     const videoHeight: number = container.clientHeight;
+
+    // get the next index based on the direction
     const nextIndex: number =
       direction === "up" ? currentVideoIndex - 1 : currentVideoIndex + 1;
   
@@ -141,7 +144,8 @@ export default function Home() {
       const currentVideo = videos[currentVideoIndex];
       setPlayedVideoIds((prev) => new Set(prev).add(currentVideo.video_id));
     }
-  
+    
+    // scroll to the next video
     if (nextIndex >= 0 && nextIndex < videos.length) {
       container.scrollTo({
         top: nextIndex * videoHeight,
@@ -156,6 +160,7 @@ export default function Home() {
     }
   };
 
+  // Loading, no videos, or video list
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-black">
