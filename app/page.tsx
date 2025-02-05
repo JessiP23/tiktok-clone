@@ -267,6 +267,7 @@ export default function Home() {
               </span>
             </button>
 
+            {/* Comment and Share buttons */}
             <button className="flex flex-col items-center gap-1">
               <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800/50">
                 <MessageCircle className="w-7 h-7 text-white" />
