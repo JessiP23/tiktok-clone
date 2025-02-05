@@ -40,11 +40,14 @@ export default function Home() {
     const likedParam: string = Array.from(likedVideoIds).join(",");
     const dislikedParam: string = Array.from(dislikedVideoIds).join(",");
     try {
+
+      // connect to flask backend
       const res = await fetch(
         `http://localhost:5000/recommendations?played=${playedParam}&liked=${likedParam}&disliked=${dislikedParam}`
       );
       const data = await res.json();
 
+      // validate response in an array
       if (Array.isArray(data)) {
         const uniqueVideos: Video[] = Array.from(
           new Map(data.map((video: Video) => [video.video_id, video])).values()
