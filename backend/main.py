@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import pandas as pd
 from flask import Flask, request, jsonify
@@ -6,96 +7,120 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from flask_cors import CORS
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 CORS(app)
 
-# Load the YouTube Trending dataset
+# Load dataset
 interactions = pd.read_csv('../USvideos.csv')
-
-# Select relevant columns
 videos = interactions[['video_id', 'title', 'views', 'category_id']].copy()
 
-# ---------------------------
-# CF Component (Popularity Proxy)
-# ---------------------------
-# Use "views" as a proxy for rating.
-# Normalize the views so that higher view counts give a higher CF score.
+# Normalize views
 scaler = MinMaxScaler()
 videos['views_norm'] = scaler.fit_transform(videos[['views']])
 
-# ---------------------------
-# CBF Component (Content similarity)
-# ---------------------------
-# Use TF-IDF on the video titles
+# TF-IDF Vectorizer
 vectorizer = TfidfVectorizer(stop_words='english')
 tfidf_matrix = vectorizer.fit_transform(videos['title'])
 
-# ---------------------------
-# Hybrid Recommendation Function
-# ---------------------------
-def recommend_videos(query: str, alpha: float=0.5, top_n: int=10, exclude_ids: list=None):
-    """
-    Recommend videos based on a query string.
-
-    Parameters:
-      query (str): Query text (can be a video title or keyword).
-      alpha (float): Weight for the CF score (normalized views). The content-based 
-                     similarity receives weight (1 - alpha).
-      top_n (int): Number of top recommendations to return.
+def recommend_videos(
+    query: str,
+    alpha: float = 0.3,  # Default to more content focus when feedback exists
+    top_n: int = 10,
+    exclude_ids: list = None,
+    liked_ids: list = None,
+    disliked_ids: list = None
+):
+    logger.info(f"Generating recommendations for: '{query}'")
     
-    Returns:
-      DataFrame containing video_id, title, and final hybrid score.
-    """
+    # Exclusion handling
+    all_excluded = set(exclude_ids or []).union(set(disliked_ids or []))
+    candidates = videos[~videos['video_id'].isin(all_excluded)]
     
-    if not query:
-      query = videos['title'].iloc[0]
+    if candidates.empty:
+        logger.warning("No candidates available after exclusions")
+        return []
 
-    # Compute TF-IDF vector for the query
-    if exclude_ids:
-        df_filtered = videos[~videos['video_id'].isin(exclude_ids)].copy()
-        if df_filtered.empty:
-            # If all videos were excluded, revert to full dataset.
-            df_filtered = videos.copy()
-        indices = df_filtered.index.tolist()
-        filtered_tfidf = tfidf_matrix[indices]
-        # Compute similarity using filtered tweets.
-        query_vec = vectorizer.transform([query])
-        sim_scores = cosine_similarity(query_vec, filtered_tfidf).flatten()
-        sim_norm = (sim_scores - sim_scores.min()) / (sim_scores.max() - sim_scores.min() + 1e-8)
-        cf_scores = df_filtered['views_norm'].values
-        final_scores = alpha * cf_scores + (1 - alpha) * sim_norm
-        df_filtered['final_score'] = final_scores
-        recommended = df_filtered.sort_values(by='final_score', ascending=False).head(top_n)
-        return recommended[['video_id', 'title', 'final_score']].to_dict(orient='records')
+    indices = candidates.index.tolist()
+    candidate_tfidf = tfidf_matrix[indices]
+
+    # Content similarity calculation
+    content_sim = np.zeros(len(candidates))
+    
+    # Blend query and liked similarities
+    if liked_ids:
+        liked_mask = videos['video_id'].isin(liked_ids)
+        if liked_mask.any():
+            # Calculate liked similarity
+            liked_tfidf = tfidf_matrix[liked_mask]
+            liked_vec = liked_tfidf.mean(axis=0)
+            liked_sim = cosine_similarity(liked_vec, candidate_tfidf).flatten()
+            
+            # Calculate query similarity
+            query_vec = vectorizer.transform([query])
+            query_sim = cosine_similarity(query_vec, candidate_tfidf).flatten()
+            
+            # Blend with preference for liked content
+            content_sim = 0.2 * query_sim + 0.8 * liked_sim
+            logger.info("Using blended query + liked similarities")
+        else:
+            query_vec = vectorizer.transform([query])
+            content_sim = cosine_similarity(query_vec, candidate_tfidf).flatten()
     else:
-        # No exclusion: use the full dataset.
         query_vec = vectorizer.transform([query])
-        sim_scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
-        sim_norm = (sim_scores - sim_scores.min()) / (sim_scores.max() - sim_scores.min() + 1e-8)
-        cf_scores = videos['views_norm'].values
-        final_scores = alpha * cf_scores + (1 - alpha) * sim_norm
-        videos['final_score'] = final_scores
-        recommended = videos.sort_values(by='final_score', ascending=False).head(top_n)
-        return recommended[['video_id', 'title', 'final_score']].to_dict(orient='records')
+        content_sim = cosine_similarity(query_vec, candidate_tfidf).flatten()
+
+    # Apply disliked penalty
+    if disliked_ids:
+        disliked_mask = videos['video_id'].isin(disliked_ids)
+        if disliked_mask.any():
+            disliked_tfidf = tfidf_matrix[disliked_mask]
+            disliked_vec = disliked_tfidf.mean(axis=0)
+            disliked_sim = cosine_similarity(disliked_vec, candidate_tfidf).flatten()
+            
+            # Apply dynamic penalty based on number of dislikes
+            beta = 1.0 + 0.1 * len(disliked_ids)
+            content_sim -= beta * disliked_sim
+            logger.info(f"Applied disliked penalty (beta={beta:.2f})")
+
+    # Normalize scores
+    content_sim = (content_sim - content_sim.min()) / (content_sim.max() - content_sim.min() + 1e-8)
+    cf_scores = candidates['views_norm'].values
+    final_scores = alpha * cf_scores + (1 - alpha) * content_sim
+
+    # Generate results
+    candidates = candidates.copy()
+    candidates['final_score'] = final_scores
+    recommendations = (
+        candidates.sort_values('final_score', ascending=False)
+        .head(top_n)
+        .to_dict(orient='records')
+    )
+    
+    logger.debug(f"Top recommendations:\n{pd.DataFrame(recommendations)}")
+    return recommendations
 
 @app.route("/recommendations", methods=["GET"])
 def recommendations_endpoint():
-    query = request.args.get("query", default="", type=str)
-    alpha = request.args.get("alpha", default=0.5, type=float)
-    top_n = request.args.get("top_n", default=10, type=int)
-    # Exclude played videos (comma separated video_ids)
-    played_str = request.args.get("played", default="", type=str)
-    exclude_ids = [vid for vid in played_str.split(",") if vid] if played_str else None
+    params = request.args.to_dict()
+    logger.info(f"Request received: {params}")
     
     try:
-        recs = recommend_videos(query, alpha=alpha, top_n=top_n, exclude_ids=exclude_ids)
-        return jsonify(recs)
+        recommendations = recommend_videos(
+            query=params.get("query", ""),
+            alpha=float(params.get("alpha", 0.3)),
+            top_n=int(params.get("top_n", 10)),
+            exclude_ids=params.get("played", "").split(",") if params.get("played") else None,
+            liked_ids=params.get("liked", "").split(",") if params.get("liked") else None,
+            disliked_ids=params.get("disliked", "").split(",") if params.get("disliked") else None
+        )
+        return jsonify(recommendations)
     except Exception as e:
+        logger.error(f"Recommendation error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-# ---------------------------
-# Sample usage (for local testing)
-# ---------------------------
 if __name__ == '__main__':
-    # Run Flask without the reloader to prevent issues in some IDEs.
     app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)

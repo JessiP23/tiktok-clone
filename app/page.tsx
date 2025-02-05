@@ -1,7 +1,14 @@
 'use client';
 
+import {
+  ChevronDown,
+  ChevronUp,
+  Heart,
+  MessageCircle,
+  Music2,
+  Share2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 
 interface Video {
   video_id: string;
@@ -9,49 +16,120 @@ interface Video {
   final_score: number;
 }
 
+type ScrollDirection = "up" | "down";
+type FeedbackType = "like" | "dislike";
+
 export default function Home() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
-  // Track played video IDs to exclude them from future recommendations.
   const [playedVideoIds, setPlayedVideoIds] = useState<Set<string>>(new Set());
+  const [likedVideoIds, setLikedVideoIds] = useState<Set<string>>(new Set());
+  const [dislikedVideoIds, setDislikedVideoIds] = useState<Set<string>>(new Set());
+  const [playingStates, setPlayingStates] = useState<{ [key: number]: boolean }>({});
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
 
-  // Fetch recommendations from the backend.
-  async function fetchRecommendations() {
-    // Build query parameter: played IDs as comma separated string.
-    const playedParam = Array.from(playedVideoIds).join(",");
-    const res = await fetch(`http://localhost:5000/recommendations?played=${playedParam}`);
-    const data: Video[] = await res.json();
-    // Filter duplicates, just in case.
-    const uniqueVideos = Array.from(
-      new Map(data.map((video) => [video.video_id, video])).values()
-    );
-    setVideos(uniqueVideos);
-    setCurrentVideoIndex(0);
-    setLoading(false);
+  // Fetch recommendations from the backend
+  async function fetchRecommendations(): Promise<void> {
+    const playedParam: string = Array.from(playedVideoIds).join(",");
+    const likedParam: string = Array.from(likedVideoIds).join(",");
+    const dislikedParam: string = Array.from(dislikedVideoIds).join(",");
+    try {
+      const res = await fetch(
+        `http://localhost:5000/recommendations?played=${playedParam}&liked=${likedParam}&disliked=${dislikedParam}`
+      );
+      const data = await res.json();
+
+      if (Array.isArray(data)) {
+        const uniqueVideos: Video[] = Array.from(
+          new Map(data.map((video: Video) => [video.video_id, video])).values()
+        );
+        setVideos(uniqueVideos);
+        setCurrentVideoIndex(0);
+      } else {
+        console.error("Unexpected response from backend:", data);
+      }
+    } catch (error) {
+      console.error("Error fetching recommendations:", error);
+    } finally {
+      setLoading(false);
+      // Initialize playing state for the first video.
+      setPlayingStates({ 0: true });
+    }
   }
-  
-  // Initial fetch.
+
   useEffect(() => {
     fetchRecommendations();
   }, []);
 
-  // Process feedback and advance to next video.
-  const handleFeedback = (type: "like" | "dislike") => {
-    const currentVideo = videos[currentVideoIndex];
-    // Add current video id to played list.
-    setPlayedVideoIds((prev) => new Set(prev).add(currentVideo.video_id));
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>): void => {
+    const container = e.currentTarget;
+    const scrollPosition = container.scrollTop;
+    const videoHeight = container.clientHeight;
+    const index = Math.round(scrollPosition / videoHeight);
 
-    // Example: Later send this feedback to the backend for personalized training.
-    // For now, simply log it:
-    console.log(`Video ${currentVideo.video_id} received ${type}`);
+    if (index !== currentVideoIndex) {
+      setCurrentVideoIndex(index);
+      setPlayingStates((prev) => {
+        const newStates: { [key: number]: boolean } = { ...prev };
+        Object.keys(newStates).forEach((key) => {
+          newStates[parseInt(key)] = false;
+        });
+        newStates[index] = true;
+        return newStates;
+      });
+      setCurrentIndex(index);
+    }
+  };
 
-    // If this was the last video in the current recommendations, fetch new ones.
-    if (currentVideoIndex === videos.length - 1) {
+  const handleFeedback = (type: FeedbackType, videoIndex: number): void => {
+    const video = videos[videoIndex];
+    console.log(`Video ${video.video_id} received ${type}`);
+
+    setPlayedVideoIds((prev) => new Set(prev).add(video.video_id));
+
+    if (type === "like") {
+      setLikedVideoIds((prev) => new Set(prev).add(video.video_id));
+    } else {
+      setDislikedVideoIds((prev) => new Set(prev).add(video.video_id));
+    }
+
+    if (videoIndex === videos.length - 1) {
       setLoading(true);
       fetchRecommendations();
-    } else {
-      setCurrentVideoIndex((prev) => prev + 1);
+    }
+  };
+
+  const togglePlay = (index: number): void => {
+    setPlayingStates((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  };
+
+  const scrollToVideo = (direction: ScrollDirection): void => {
+    const container = document.querySelector(".video-container") as HTMLElement;
+    const videoHeight: number = container.clientHeight;
+    const nextIndex: number =
+      direction === "up" ? currentVideoIndex - 1 : currentVideoIndex + 1;
+  
+    // When scrolling down, mark the current video as played.
+    if (direction === "down") {
+      const currentVideo = videos[currentVideoIndex];
+      setPlayedVideoIds((prev) => new Set(prev).add(currentVideo.video_id));
+    }
+  
+    if (nextIndex >= 0 && nextIndex < videos.length) {
+      container.scrollTo({
+        top: nextIndex * videoHeight,
+        behavior: "smooth",
+      });
+      setCurrentVideoIndex(nextIndex);
+      setCurrentIndex(nextIndex);
+    } else if (nextIndex >= videos.length) {
+      // At the end of the list, fetch new recommendations.
+      setLoading(true);
+      fetchRecommendations();
     }
   };
 
@@ -63,7 +141,6 @@ export default function Home() {
     );
   }
 
-  // If no recommendations at all.
   if (videos.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen bg-black">
@@ -72,54 +149,122 @@ export default function Home() {
     );
   }
 
-  const video = videos[currentVideoIndex];
-
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden">
-      {/* YouTube embed to play current video automatically */}
-      <div className="absolute inset-0">
-        <iframe
-          src={`https://www.youtube.com/embed/${video.video_id}?autoplay=1&controls=0&modestbranding=1`}
-          title={video.title}
-          frameBorder="0"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
-          className="w-full h-full"
-        />
-        <div className="absolute inset-0 bg-black opacity-30" />
-      </div>
-      {/* Video details overlay (bottom left) */}
-      <div className="absolute bottom-10 left-6 text-white z-10">
-        <h2 className="text-2xl font-bold mb-2">{video.title}</h2>
-        <p className="text-sm">Score: {video.final_score.toFixed(3)}</p>
-      </div>
-      {/* Like/Dislike buttons overlay (right side) */}
-      <div className="absolute right-6 bottom-20 flex flex-col gap-4 z-10">
-        <button
-          onClick={() => handleFeedback("like")}
-          className="w-14 h-14 flex items-center justify-center rounded-full bg-green-600 shadow-lg"
+    <div
+      className="video-container h-screen overflow-y-scroll snap-y snap-mandatory relative"
+      onScroll={handleScroll}
+    >
+      {videos.map((video, index) => (
+        <div
+          key={video.video_id}
+          className="relative w-full h-screen bg-black overflow-hidden snap-start"
         >
-          <svg
-            className="w-7 h-7 text-white"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path d="M3 10a1 1 0 011-1h4V5a1 1 0 112 0v4h4a1 1 0 110 2h-4v4a1 1 0 11-2 0v-4H4a1 1 0 01-1-1z" />
-          </svg>
-        </button>
-        <button
-          onClick={() => handleFeedback("dislike")}
-          className="w-14 h-14 flex items-center justify-center rounded-full bg-red-600 shadow-lg"
-        >
-          <svg
-            className="w-7 h-7 text-white"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path d="M17 10a1 1 0 00-1-1h-4V5a1 1 0 00-2 0v4H4a1 1 0 000 2h6v4a1 1 0 002 0v-4h4a1 1 0 001-1z" />
-          </svg>
-        </button>
-      </div>
+          {/* Video container with click handler */}
+          <div className="absolute inset-0" onClick={() => togglePlay(index)}>
+            {playingStates[index] ? (
+              <iframe
+                src={`https://www.youtube.com/embed/${video.video_id}?autoplay=1&controls=0&modestbranding=1`}
+                title={video.title}
+                frameBorder="0"
+                allow="autoplay; encrypted-media"
+                allowFullScreen
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="relative w-full h-full">
+                <img
+                  src={`https://img.youtube.com/vi/${video.video_id}/hqdefault.jpg`}
+                  alt={video.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <svg
+                    className="w-16 h-16 text-white opacity-80"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Navigation Arrows */}
+          <div className="absolute left-1/2 transform -translate-x-1/2 z-20 flex flex-col items-center gap-4 bottom-4">
+            {currentIndex > 0 && (
+              <button
+                onClick={() => scrollToVideo("up")}
+                className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800/50 hover:bg-gray-700/50 transition-colors"
+              >
+                <ChevronUp className="w-8 h-8 text-white" />
+              </button>
+            )}
+            <button
+              onClick={() => scrollToVideo("down")}
+              className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800/50 hover:bg-gray-700/50 transition-colors"
+            >
+              <ChevronDown className="w-8 h-8 text-white" />
+            </button>
+          </div>
+
+          {/* Vertical action bar - right side */}
+          <div className="absolute right-4 bottom-20 flex flex-col items-center gap-6 z-10">
+            <div className="w-12 h-12 rounded-full bg-gray-300 overflow-hidden mb-4">
+              <img
+                src="/api/placeholder/40/40"
+                alt="Profile"
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            <button
+              onClick={() => handleFeedback("like", index)}
+              className="flex flex-col items-center gap-1"
+            >
+              <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800/50">
+                <Heart
+                  className={`w-7 h-7 ${
+                    likedVideoIds.has(video.video_id) ? "text-red-500" : "text-white"
+                  }`}
+                  fill={likedVideoIds.has(video.video_id) ? "currentColor" : "none"}
+                />
+              </div>
+              <span className="text-white text-xs">
+                {Math.floor(video.final_score * 1000)}
+              </span>
+            </button>
+
+            <button className="flex flex-col items-center gap-1">
+              <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800/50">
+                <MessageCircle className="w-7 h-7 text-white" />
+              </div>
+              <span className="text-white text-xs">Comments</span>
+            </button>
+
+            <button className="flex flex-col items-center gap-1">
+              <div className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800/50">
+                <Share2 className="w-7 h-7 text-white" />
+              </div>
+              <span className="text-white text-xs">Share</span>
+            </button>
+          </div>
+
+          {/* Video info - bottom */}
+          <div className="absolute bottom-0 left-0 p-4 w-full z-10">
+            <div className="max-w-[80%]">
+              <h2 className="text-white font-semibold mb-2">{video.title}</h2>
+              <div className="flex items-center gap-2">
+                <Music2 className="w-4 h-4 text-white" />
+                <p className="text-white text-sm">Original Sound</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Gradient overlay */}
+          <div className="absolute bottom-0 left-0 w-full h-48 bg-gradient-to-t from-black/60 to-transparent" />
+        </div>
+      ))}
     </div>
   );
 }
