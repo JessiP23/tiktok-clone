@@ -23,6 +23,7 @@ type ScrollDirection = "up" | "down";
 type FeedbackType = "like" | "dislike";
 
 export default function Home() {
+  // videos, current video index, loading status
   const [videos, setVideos] = useState<Video[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
