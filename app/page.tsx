@@ -129,7 +129,7 @@ export default function Home() {
   };
 
 
-  // scroll video function
+  // scroll to the next video based on the direction
   const scrollToVideo = (direction: ScrollDirection): void => {
     const container = document.querySelector(".video-container") as HTMLElement;
     const videoHeight: number = container.clientHeight;
