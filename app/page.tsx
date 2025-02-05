@@ -189,9 +189,9 @@ export default function Home() {
           key={video.video_id}
           className="relative w-full h-screen bg-black overflow-hidden snap-start"
         >
-          {/* Video container with click handler */}
           <div className="absolute inset-0" onClick={() => togglePlay(index)}>
             {playingStates[index] ? (
+              // Play the video if the state is true
               <iframe
                 src={`https://www.youtube.com/embed/${video.video_id}?autoplay=1&controls=0&modestbranding=1`}
                 title={video.title}
@@ -201,6 +201,7 @@ export default function Home() {
                 className="w-full h-full object-cover"
               />
             ) : (
+              // Show the video thumbnail if the state is false
               <div className="relative w-full h-full">
                 <img
                   src={`https://img.youtube.com/vi/${video.video_id}/hqdefault.jpg`}
@@ -248,6 +249,7 @@ export default function Home() {
               />
             </div>
 
+            {/* Like button */}
             <button
               onClick={() => handleFeedback("like", index)}
               className="flex flex-col items-center gap-1"
