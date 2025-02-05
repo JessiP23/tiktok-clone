@@ -98,6 +98,8 @@ export default function Home() {
     }
   };
 
+
+  // Collect user feedbgack for a given video and show recommendations
   const handleFeedback = (type: FeedbackType, videoIndex: number): void => {
     const video = videos[videoIndex];
     console.log(`Video ${video.video_id} received ${type}`);
