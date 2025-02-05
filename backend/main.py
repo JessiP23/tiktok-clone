@@ -60,7 +60,7 @@ model.fit(X_train_scaled, y_train, epochs=10, batch_size=32)
 
 # create a custom hybrid model that combines CF and CBF
 class HybridModel:
-    def _init_(self, cf_model, cbf_model):
+    def __init__(self, cf_model, cbf_model):
         self.cf_model = cf_model
         self.cbf_model = cbf_model
 
