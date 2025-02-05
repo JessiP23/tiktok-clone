@@ -114,6 +114,7 @@ export default function Home() {
       setDislikedVideoIds((prev) => new Set(prev).add(video.video_id));
     }
 
+    // fetch new recommendations when the last video is reached
     if (videoIndex === videos.length - 1) {
       setLoading(true);
       fetchRecommendations();
