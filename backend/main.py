@@ -1,8 +1,11 @@
 import numpy as np
 import pandas as pd
+from flask import Flask, request, jsonify
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+app = Flask(__name__)
 
 # Load the YouTube Trending dataset
 interactions = pd.read_csv('/kaggle/working/data/youtube-new/USvideos.csv')
@@ -28,7 +31,7 @@ tfidf_matrix = vectorizer.fit_transform(videos['title'])
 # ---------------------------
 # Hybrid Recommendation Function
 # ---------------------------
-def recommend_videos(query, alpha=0.5, top_n=10):
+def recommend_videos(query: str, alpha: float=0.5, top_n: int=10):
     """
     Recommend videos based on a query string.
 
@@ -41,6 +44,10 @@ def recommend_videos(query, alpha=0.5, top_n=10):
     Returns:
       DataFrame containing video_id, title, and final hybrid score.
     """
+    
+    if not query:
+      query = videos['title'].iloc[0]
+
     # Compute TF-IDF vector for the query
     query_vec = vectorizer.transform([query])
     # Compute cosine similarity between query and all video titles
@@ -56,14 +63,23 @@ def recommend_videos(query, alpha=0.5, top_n=10):
     # Attach scores to the dataframe and sort by the final score descending
     videos['final_score'] = final_scores
     recommended = videos.sort_values(by='final_score', ascending=False).head(top_n)
-    return recommended[['video_id', 'title', 'final_score']]
+    return recommended[['video_id', 'title', 'final_score']].to_dict(orient='records')
+
+@app.route("/recommendations", methods=["GET"])
+def recommendations_endpoint():
+    query = request.args.get("query", default="", type=str)
+    alpha = request.args.get("alpha", default=0.5, type=float)
+    top_n = request.args.get("top_n", default=10, type=int)
+    
+    try:
+        recs = recommend_videos(query, alpha=alpha, top_n=top_n)
+        return jsonify(recs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------
-# Example Usage
+# Sample usage (for local testing)
 # ---------------------------
-# For demonstration, use the title of the first video in the dataset as the query.
-sample_query = videos['title'].iloc[0]
-recommendations = recommend_videos(sample_query, alpha=0.5, top_n=10)
-
-print("Recommendations:")
-print(recommendations)
+if __name__ == '__main__':
+    # Run Flask without the reloader to prevent issues in some IDEs.
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
