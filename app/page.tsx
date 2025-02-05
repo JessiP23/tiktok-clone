@@ -78,10 +78,14 @@ export default function Home() {
     const container = e.currentTarget;
     const scrollPosition = container.scrollTop;
     const videoHeight = container.clientHeight;
+
+    // get index based on scroll position
     const index = Math.round(scrollPosition / videoHeight);
 
+    // update the state
     if (index !== currentVideoIndex) {
       setCurrentVideoIndex(index);
+      // reset playing states, set current index to play
       setPlayingStates((prev) => {
         const newStates: { [key: number]: boolean } = { ...prev };
         Object.keys(newStates).forEach((key) => {
