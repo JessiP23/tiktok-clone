@@ -49,6 +49,7 @@ export default function Home() {
 
       // validate response in an array
       if (Array.isArray(data)) {
+        // remove duplicate videos using video_id as key
         const uniqueVideos: Video[] = Array.from(
           new Map(data.map((video: Video) => [video.video_id, video])).values()
         );
