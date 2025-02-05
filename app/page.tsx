@@ -18,6 +18,7 @@ interface Video {
   final_score: number;
 }
 
+// scroll direction and feedback actions
 type ScrollDirection = "up" | "down";
 type FeedbackType = "like" | "dislike";
 
