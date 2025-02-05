@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+
+// video inference represents the structure of a video object
 interface Video {
   video_id: string;
   title: string;
