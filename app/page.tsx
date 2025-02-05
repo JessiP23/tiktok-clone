@@ -177,11 +177,13 @@ export default function Home() {
     );
   }
 
+  // Video container with video and action buttons
   return (
     <div
       className="video-container h-screen overflow-y-scroll snap-y snap-mandatory relative"
       onScroll={handleScroll}
     >
+      {/* map through each video in the list */}
       {videos.map((video, index) => (
         <div
           key={video.video_id}
