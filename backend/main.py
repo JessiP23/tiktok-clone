@@ -33,7 +33,7 @@ tfidf_matrix = vectorizer.fit_transform(videos['title'])
 # ---------------------------
 # Hybrid Recommendation Function
 # ---------------------------
-def recommend_videos(query: str, alpha: float=0.5, top_n: int=10):
+def recommend_videos(query: str, alpha: float=0.5, top_n: int=10, exclude_ids: list=None):
     """
     Recommend videos based on a query string.
 
@@ -51,30 +51,44 @@ def recommend_videos(query: str, alpha: float=0.5, top_n: int=10):
       query = videos['title'].iloc[0]
 
     # Compute TF-IDF vector for the query
-    query_vec = vectorizer.transform([query])
-    # Compute cosine similarity between query and all video titles
-    sim_scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
-    # Normalize the similarity scores to [0, 1]
-    sim_norm = (sim_scores - sim_scores.min()) / (sim_scores.max() - sim_scores.min() + 1e-8)
-    
-    # Get the CF score from normalized views
-    cf_scores = videos['views_norm'].values
-    # Compute the final hybrid score as a weighted combination
-    final_scores = alpha * cf_scores + (1 - alpha) * sim_norm
-    
-    # Attach scores to the dataframe and sort by the final score descending
-    videos['final_score'] = final_scores
-    recommended = videos.sort_values(by='final_score', ascending=False).head(top_n)
-    return recommended[['video_id', 'title', 'final_score']].to_dict(orient='records')
+    if exclude_ids:
+        df_filtered = videos[~videos['video_id'].isin(exclude_ids)].copy()
+        if df_filtered.empty:
+            # If all videos were excluded, revert to full dataset.
+            df_filtered = videos.copy()
+        indices = df_filtered.index.tolist()
+        filtered_tfidf = tfidf_matrix[indices]
+        # Compute similarity using filtered tweets.
+        query_vec = vectorizer.transform([query])
+        sim_scores = cosine_similarity(query_vec, filtered_tfidf).flatten()
+        sim_norm = (sim_scores - sim_scores.min()) / (sim_scores.max() - sim_scores.min() + 1e-8)
+        cf_scores = df_filtered['views_norm'].values
+        final_scores = alpha * cf_scores + (1 - alpha) * sim_norm
+        df_filtered['final_score'] = final_scores
+        recommended = df_filtered.sort_values(by='final_score', ascending=False).head(top_n)
+        return recommended[['video_id', 'title', 'final_score']].to_dict(orient='records')
+    else:
+        # No exclusion: use the full dataset.
+        query_vec = vectorizer.transform([query])
+        sim_scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
+        sim_norm = (sim_scores - sim_scores.min()) / (sim_scores.max() - sim_scores.min() + 1e-8)
+        cf_scores = videos['views_norm'].values
+        final_scores = alpha * cf_scores + (1 - alpha) * sim_norm
+        videos['final_score'] = final_scores
+        recommended = videos.sort_values(by='final_score', ascending=False).head(top_n)
+        return recommended[['video_id', 'title', 'final_score']].to_dict(orient='records')
 
 @app.route("/recommendations", methods=["GET"])
 def recommendations_endpoint():
     query = request.args.get("query", default="", type=str)
     alpha = request.args.get("alpha", default=0.5, type=float)
     top_n = request.args.get("top_n", default=10, type=int)
+    # Exclude played videos (comma separated video_ids)
+    played_str = request.args.get("played", default="", type=str)
+    exclude_ids = [vid for vid in played_str.split(",") if vid] if played_str else None
     
     try:
-        recs = recommend_videos(query, alpha=alpha, top_n=top_n)
+        recs = recommend_videos(query, alpha=alpha, top_n=top_n, exclude_ids=exclude_ids)
         return jsonify(recs)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
